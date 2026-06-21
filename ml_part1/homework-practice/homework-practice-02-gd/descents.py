@@ -23,9 +23,7 @@ class TimeDecayLR(LearningRateSchedule):
         self.lambda_ = lambda_
 
     def get_lr(self, iteration: int) -> float:
-        # TODO: реализовать формулу затухающего шага обучения
-        raise NotImplementedError
-
+        return self.lambda_ * ((self.s0 / (self.s0 + iteration)) ** self.p)
 
 # ===== Base Optimizer =====
 class BaseDescent(ABC):
@@ -49,12 +47,12 @@ class BaseDescent(ABC):
 # ===== Specific Optimizers =====
 class VanillaGradientDescent(BaseDescent):
     def update_weights(self):
-        # TODO: реализовать vanilla градиентный спуск
-        # Можно использовать атрибуты класса self.model
         X_train = self.model.X_train
         y_train = self.model.y_train
-        # gradient = ...
-        raise NotImplementedError
+        gradient = self.model.compute_gradients(X_train, y_train)
+        update = -self.lr_schedule.get_lr(self.iteration) * gradient
+        self.model.w = self.model.w + update
+        return update
 
 
 class StochasticGradientDescent(BaseDescent):
@@ -63,11 +61,16 @@ class StochasticGradientDescent(BaseDescent):
         self.batch_size = batch_size
 
     def update_weights(self):
-        # TODO: реализовать стохастический градиентный спуск
-        # 1) выбрать случайный батч
-        # 2) вычислить градиенты на батче
-        # 3) обновить веса модели
-        raise NotImplementedError
+        X_train = self.model.X_train
+        y_train = self.model.y_train
+        num_objects = len(y_train)
+        batch_indices = np.random.randint(num_objects, size=self.batch_size)
+        gradient = self.model.compute_gradients(
+            X_train[batch_indices], y_train[batch_indices]
+        )
+        update = -self.lr_schedule.get_lr(self.iteration) * gradient
+        self.model.w = self.model.w + update
+        return update
 
 
 class SAGDescent(BaseDescent):
@@ -77,16 +80,25 @@ class SAGDescent(BaseDescent):
         self.grad_sum = None
 
     def update_weights(self):
-        # TODO: реализовать SAG
         X_train = self.model.X_train
         y_train = self.model.y_train
         num_objects, num_features = X_train.shape
 
         if self.grad_memory is None:
-            # TODO: инициализировать хранилища при первом вызове 
+            self.grad_memory = np.zeros((num_objects, num_features))
+            self.grad_sum = np.zeros(num_features)
 
-        # TODO: реализовать SAG
-        raise NotImplementedError
+        j = np.random.randint(num_objects)
+        grad_old = self.grad_memory[j].copy()
+        grad_new = np.asarray(
+            self.model.compute_gradients(X_train[j : j + 1], y_train[j : j + 1])
+        ).ravel()
+        self.grad_sum += (grad_new - grad_old) / num_objects
+        self.grad_memory[j] = grad_new
+
+        update = -self.lr_schedule.get_lr(self.iteration) * self.grad_sum
+        self.model.w = self.model.w + update
+        return update
 
 
 class MomentumDescent(BaseDescent):
@@ -96,8 +108,17 @@ class MomentumDescent(BaseDescent):
         self.velocity = None
 
     def update_weights(self):
-        # TODO: реализовать градиентный спуск с моментумом
-        raise NotImplementedError
+        if self.velocity is None:
+            self.velocity = np.zeros_like(self.model.w)
+
+        gradient = self.model.compute_gradients(self.model.X_train, self.model.y_train)
+        self.velocity = (
+            self.beta * self.velocity
+            + self.lr_schedule.get_lr(self.iteration) * gradient
+        )
+        update = -self.velocity
+        self.model.w = self.model.w + update
+        return update
 
 
 class Adam(BaseDescent):
@@ -110,5 +131,22 @@ class Adam(BaseDescent):
         self.v = None
 
     def update_weights(self):
-        # TODO: реализовать Adam по формуле из ноутбука
-        raise NotImplementedError
+        if self.m is None:
+            self.m = np.zeros_like(self.model.w)
+            self.v = np.zeros_like(self.model.w)
+
+        gradient = self.model.compute_gradients(self.model.X_train, self.model.y_train)
+        self.m = self.beta1 * self.m + (1 - self.beta1) * gradient
+        self.v = self.beta2 * self.v + (1 - self.beta2) * (gradient ** 2)
+
+        t = self.iteration + 1
+        m_hat = self.m / (1 - self.beta1 ** t)
+        v_hat = self.v / (1 - self.beta2 ** t)
+
+        update = (
+            -self.lr_schedule.get_lr(self.iteration)
+            * m_hat
+            / (np.sqrt(v_hat) + self.eps)
+        )
+        self.model.w = self.model.w + update
+        return update
