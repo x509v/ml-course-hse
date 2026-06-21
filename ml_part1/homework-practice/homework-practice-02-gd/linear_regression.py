@@ -33,31 +33,44 @@ class LinearRegression:
         self.loss_history = []
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        # TODO: реализовать функцию предсказания в линейной регрессии
-        raise NotImplementedError("predict function is not implemented")
+        return X @ self.w
 
     def compute_gradients(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         if self.loss_function is LossFunction.MSE:
-            # TODO: реализовать вычисление градиентов для MSE
-            raise NotImplementedError("MSE gradients is not implemented")
+            residuals: np.ndarray = np.asarray(X @ self.w - y, dtype=float)
+            return (2 / len(y)) * (X.T @ residuals) + 2 * self.l2_coef * self.w
         # elif self.loss_function is ...
         return None
 
     def compute_loss(self, X: np.ndarray, y: np.ndarray) -> float:
         if self.loss_function is LossFunction.MSE:
             # TODO: реализовать loss-функцию MSE
-            raise NotImplementedError("MSE is not implemented")
+            l: int = len(y)
+            mse = (np.sum((X @ self.w - y) ** 2)) / l
+            return mse + self.l2_coef * np.sum(self.w ** 2)
         # elif self.loss_function is ...
         return 0.0
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         # TODO: реализовать обучение модели
         self.X_train, self.y_train = X, y
+        self.w = np.zeros(self.X_train.shape[1])
+        self.loss_history.append(self.compute_loss(self.X_train, self.y_train))
 
         if isinstance(self.optimizer, BaseDescent):
-            # ...
             for _ in range(self.max_iter):
-                # 1 шаг градиентного спуска
-                _
+                old_w = self.w.copy()
+                self.optimizer.step()
+                self.loss_history.append(self.compute_loss(self.X_train, self.y_train))
+                if np.linalg.norm(self.w - old_w) < self.tolerance:
+                    break
+        elif self.optimizer is None:
+            regularization = self.l2_coef * len(y) * np.eye(X.shape[1])
+            self.w = np.linalg.solve(X.T @ X + regularization, X.T @ y)
+            self.loss_history.append(self.compute_loss(self.X_train, self.y_train))
+        elif self.optimizer == "SVD":
+            self.w = np.linalg.pinv(X) @ y
+            self.loss_history.append(self.compute_loss(self.X_train, self.y_train))
+        else:
+            raise ValueError("Invalid optimizer")
         # elif self.optimizer is ...
-        raise NotImplementedError("Linear Regression training is not implemented")
